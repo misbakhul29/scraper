@@ -11,3 +11,4 @@ examples
 chrome-data/*
 articles/*
 tmp/*
+sessions/default.json
