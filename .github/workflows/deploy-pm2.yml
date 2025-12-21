@@ -129,7 +129,7 @@ jobs:
               echo "✅ Preserving existing .env file"
               cp $APP_DIR/.env $APP_DIR/.env.backup
             fi
-            cp -r deploy-package/* $APP_DIR/
+            cp -a deploy-package/. $APP_DIR/
             
             # Restore .env backup if deployment didn't include one, or use the new one
             if [ -f "$APP_DIR/.env.backup" ] && [ ! -f "deploy-package/.env" ]; then
@@ -149,7 +149,7 @@ jobs:
               cat > $APP_DIR/.env << 'EOF'
             NODE_ENV=production
             PORT=3000
-            DATABASE_URL=postgresql://user:password@localhost:5432/chatgpt_scraper?schema=public
+            DATABASE_URL=postgres://3589fed63d405704b84cf7b7dd24479b9e66a48373e1c306e4dccf8e8c007f02:sk_arR7oEiAYuADoWRfHy3dU@db.prisma.io:5432/postgres?sslmode=require
             CHROME_DEBUG_PORT=9222
             CHROME_USER_DATA_DIR=/opt/scraper/chrome-data
             RABBITMQ_HOST=localhost
