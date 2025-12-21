@@ -4,7 +4,6 @@ dist/
 .env.local
 *.log
 .DS_Store
-sessions/
 *.session
 prisma/migrations/
 sessions\default.json
