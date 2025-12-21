@@ -48,6 +48,7 @@ jobs:
           cp -r src/generated deploy-package/src/ 2>/dev/null || true
           cp package*.json deploy-package/
           cp tsconfig.json deploy-package/
+          cp prisma.config.ts deploy-package/
           cp prisma deploy-package/ -r
           # Copy session files if they exist (optional)
           mkdir -p deploy-package/sessions
