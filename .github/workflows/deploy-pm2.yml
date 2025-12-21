@@ -188,7 +188,7 @@ jobs:
               --merge-logs \
               --log $APP_DIR/logs/app.log \
               --error $APP_DIR/logs/error.log \
-              --out $APP_DIR/logs/out.log
+              --output $APP_DIR/logs/out.log
             
             # Save PM2 configuration
             pm2 save || true
