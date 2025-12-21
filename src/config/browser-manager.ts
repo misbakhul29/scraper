@@ -427,6 +427,36 @@ export class BrowserManager {
       }
 
       if (wsUrl) {
+        // Always set clipboard permissions (even without session data)
+        try {
+          fs.appendFileSync(logFile, `🔐 Setting clipboard permissions...\n`, 'utf8');
+          const browser = await puppeteer.connect({
+            browserWSEndpoint: wsUrl,
+            defaultViewport: null
+          });
+          const context = browser.defaultBrowserContext();
+          
+          await context.overridePermissions('https://chatgpt.com', [
+            'clipboard-read',
+            'clipboard-write',
+            'clipboard-sanitized-write',
+          ]);
+          await context.overridePermissions('https://chat.openai.com', [
+            'clipboard-read',
+            'clipboard-write',
+            'clipboard-sanitized-write',
+          ]);
+          
+          fs.appendFileSync(logFile, `✅ Clipboard permissions granted\n`, 'utf8');
+          console.log(`✅ [Browser ${i + 1}/${count}] Clipboard permissions set on port ${port}`);
+          
+          // Disconnect after setting permissions (will reconnect later if needed)
+          await browser.disconnect();
+        } catch (err) {
+          fs.appendFileSync(logFile, `⚠️ Failed to set clipboard permissions: ${err instanceof Error ? err.message : String(err)}\n`, 'utf8');
+          console.warn(`⚠️ [Browser ${i + 1}/${count}] Failed to set clipboard permissions:`, err);
+        }
+
         // Inject session if available
         if (sessionData) {
           fs.appendFileSync(logFile, `🔄 Injecting session data...\n`, 'utf8');
