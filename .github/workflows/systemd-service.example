@@ -1,0 +1,27 @@
+[Unit]
+Description=ChatGPT Scraper Service
+After=network.target postgresql.service rabbitmq-server.service
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/opt/scraper
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scraper
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/scraper/logs /opt/scraper/articles /opt/scraper/sessions /opt/scraper/tmp
+
+[Install]
+WantedBy=multi-user.target
+

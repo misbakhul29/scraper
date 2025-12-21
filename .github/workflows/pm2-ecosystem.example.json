@@ -1,0 +1,31 @@
+{
+  "apps": [
+    {
+      "name": "scraper",
+      "script": "dist/index.js",
+      "cwd": "/opt/scraper",
+      "instances": 1,
+      "exec_mode": "fork",
+      "env": {
+        "NODE_ENV": "production",
+        "PORT": 3000
+      },
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "error_file": "/opt/scraper/logs/error.log",
+      "out_file": "/opt/scraper/logs/out.log",
+      "log_file": "/opt/scraper/logs/app.log",
+      "max_memory_restart": "1G",
+      "autorestart": true,
+      "watch": false,
+      "ignore_watch": [
+        "node_modules",
+        "logs",
+        "tmp",
+        "articles",
+        "sessions"
+      ]
+    }
+  ]
+}
+

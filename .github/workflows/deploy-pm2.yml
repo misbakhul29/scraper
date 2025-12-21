@@ -1,0 +1,159 @@
+name: Deploy to VPS (PM2)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    name: Deploy to VPS with PM2
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy-package
+          cp -r dist deploy-package/
+          cp -r src/generated deploy-package/src/ 2>/dev/null || true
+          cp package*.json deploy-package/
+          cp tsconfig.json deploy-package/
+          cp prisma deploy-package/ -r
+          cp .env.example deploy-package/ 2>/dev/null || true
+          # Copy session files if they exist (optional)
+          cp sessions/*.bin deploy-package/sessions/ 2>/dev/null || true
+          tar -czf deploy-package.tar.gz deploy-package/
+
+      - name: Deploy to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          source: "deploy-package.tar.gz"
+          target: "/tmp"
+
+      - name: Deploy and Restart on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            set -e
+            
+            APP_DIR="${{ secrets.VPS_APP_DIR || '/opt/scraper' }}"
+            BACKUP_DIR="$APP_DIR/backups"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            
+            echo "🚀 Starting deployment..."
+            
+            # Create directories
+            mkdir -p $APP_DIR
+            mkdir -p $BACKUP_DIR
+            mkdir -p $APP_DIR/logs
+            mkdir -p $APP_DIR/articles
+            mkdir -p $APP_DIR/sessions
+            
+            # Backup current deployment
+            if [ -d "$APP_DIR/dist" ]; then
+              echo "📦 Creating backup..."
+              tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" -C $APP_DIR dist src/generated package*.json 2>/dev/null || true
+              # Keep only last 5 backups
+              ls -t $BACKUP_DIR/backup_*.tar.gz | tail -n +6 | xargs rm -f 2>/dev/null || true
+            fi
+            
+            # Extract deployment
+            echo "📂 Extracting deployment package..."
+            cd /tmp
+            tar -xzf deploy-package.tar.gz
+            
+            # Stop PM2 process
+            echo "⏸️ Stopping PM2 process..."
+            pm2 stop scraper || true
+            pm2 delete scraper || true
+            
+            # Copy files
+            echo "📋 Copying files..."
+            cp -r deploy-package/* $APP_DIR/
+            
+            # Install dependencies
+            echo "📦 Installing dependencies..."
+            cd $APP_DIR
+            npm ci --production
+            
+            # Generate Prisma client
+            echo "🗄️ Generating Prisma client..."
+            npm run prisma:generate || true
+            
+            # Run migrations
+            echo "🗄️ Running database migrations..."
+            npm run prisma:migrate deploy || echo "⚠️ Migration failed, continuing..."
+            
+            # Cleanup
+            rm -rf /tmp/deploy-package /tmp/deploy-package.tar.gz
+            
+            # Start with PM2
+            echo "🔄 Starting application with PM2..."
+            cd $APP_DIR
+            pm2 start dist/index.js \
+              --name scraper \
+              --update-env \
+              --log-date-format "YYYY-MM-DD HH:mm:ss Z" \
+              --merge-logs \
+              --log $APP_DIR/logs/app.log \
+              --error $APP_DIR/logs/error.log \
+              --out $APP_DIR/logs/out.log
+            
+            # Save PM2 configuration
+            pm2 save || true
+            
+            # Show status
+            pm2 status scraper
+            pm2 logs scraper --lines 20 --nostream
+            
+            echo "✅ Deployment completed successfully!"
+
+      - name: Health Check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            sleep 10
+            echo "🔍 Checking application status..."
+            pm2 status scraper
+            pm2 logs scraper --lines 10 --nostream
+            
+            if [ -n "${{ secrets.VPS_APP_URL }}" ]; then
+              echo "🔍 Checking health endpoint..."
+              curl -f ${{ secrets.VPS_APP_URL }}/health && echo "✅ Health check passed" || echo "⚠️ Health check failed"
+            fi
+
