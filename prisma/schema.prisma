@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Article {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  content     String   @db.Text
+  excerpt     String?  @db.Text
+  metaTitle   String?  @map("meta_title")
+  metaDescription String? @map("meta_description") @db.Text
+  metaKeywords String? @map("meta_keywords")
+  ogTitle     String?  @map("og_title")
+  ogDescription String? @map("og_description") @db.Text
+  ogImage     String?  @map("og_image")
+  canonicalUrl String? @map("canonical_url")
+  author      String?
+  publishedAt DateTime? @map("published_at")
+  status      ArticleStatus @default(DRAFT)
+  featuredImage String? @map("featured_image")
+  tags        String[]
+  categories  String[]
+  readingTime Int?     @map("reading_time")
+  wordCount   Int?     @map("word_count")
+  seoScore    Int?     @map("seo_score")
+  schemaMarkup Json?   @map("schema_markup")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  articleSeo  ArticleSEO?
+  articleContent ArticleContent?
+  
+  @@index([slug])
+  @@index([status])
+  @@index([publishedAt])
+  @@map("articles")
+}
+
+model ArticleSEO {
+  id                String   @id @default(cuid())
+  articleId         String   @unique @map("article_id")
+  focusKeyword      String?  @map("focus_keyword")
+  seoTitle          String?  @map("seo_title")
+  seoDescription    String?  @map("seo_description") @db.Text
+  internalLinks     Json?    @map("internal_links")
+  externalLinks     Json?    @map("external_links")
+  imageAltTexts     Json?    @map("image_alt_texts")
+  headingStructure  Json?    @map("heading_structure")
+  readabilityScore  Float?   @map("readability_score")
+  keywordDensity    Json?    @map("keyword_density")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  
+  @@map("article_seo")
+}
+
+model ArticleContent {
+  id          String   @id @default(cuid())
+  articleId   String   @unique @map("article_id")
+  introduction String? @db.Text
+  body        String   @db.Text
+  conclusion  String?  @db.Text
+  faqSection  Json?    @map("faq_section")
+  relatedTopics Json?  @map("related_topics")
+  citations   Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  
+  @@map("article_content")
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}

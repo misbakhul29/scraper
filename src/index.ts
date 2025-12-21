@@ -1,0 +1,280 @@
+import express from 'express';
+import dotenv from 'dotenv';
+import { ChromeManager } from './config/chrome';
+import { SessionManager } from './utils/session-manager';
+import { ChatGPTScraper } from './services/chatgpt-scraper';
+import { ArticleService } from './services/article-service';
+import { queueService, ArticleJob } from './services/queue-service';
+import { createArticleRoutes } from './routes/article.routes';
+import { removeAutomationDetection, setRealisticBrowser } from './utils/stealth-helper';
+import { prisma } from './lib/prisma'
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const CHROME_DEBUG_PORT = parseInt(process.env.CHROME_DEBUG_PORT || '9222');
+
+// Initialize managers
+const chromeManager = new ChromeManager({
+  debugPort: CHROME_DEBUG_PORT,
+  headless: false, // Non-headless untuk bisa login
+  userDataDir: process.env.CHROME_USER_DATA_DIR,
+});
+
+const sessionManager = new SessionManager();
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Initialize browser and services
+let chatgptScraper: ChatGPTScraper | null = null;
+let articleService: ArticleService | null = null;
+
+async function initializeServices() {
+  // Initialize RabbitMQ connection (for queue status endpoint)
+  try {
+    await queueService.connect();
+    console.log('✅ RabbitMQ connected');
+  } catch (error) {
+    console.warn('⚠️ Failed to connect to RabbitMQ (queue features may not work):', error);
+  }
+  try {
+    console.log('🚀 Initializing services...');
+    
+    // Get or create browser
+    const browser = await chromeManager.getBrowser();
+    
+    // Use existing page if available, otherwise create new one
+    const pages = await browser.pages();
+    const page = pages.length > 0 ? pages[0] : await browser.newPage();
+
+    // Remove automation detection (must be done before navigation)
+    await removeAutomationDetection(page);
+    
+    // Set realistic browser settings
+    await setRealisticBrowser(page);
+
+    // Remove automation banner using CDP
+    try {
+      const client = await page.createCDPSession();
+      await client.send('Runtime.addBinding', { name: 'cdc_adoQpoasnfa76pfcZLmcfl_Array' });
+      await client.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+          });
+          delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+          delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+          delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+        `,
+      });
+    } catch (e) {
+      // Ignore CDP errors
+      console.warn('⚠️ Could not remove automation banner via CDP:', e);
+    }
+
+    // Initialize scraper and service
+    chatgptScraper = new ChatGPTScraper(page, sessionManager);
+    articleService = new ArticleService(prisma, chatgptScraper);
+
+    // Navigate to ChatGPT automatically in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🌐 Navigating to ChatGPT...');
+      try {
+        // Navigate first (sessionStorage needs valid origin)
+        await page.goto('https://chatgpt.com', {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000,
+        });
+        console.log('✅ Navigated to ChatGPT');
+        
+        // Try to import default session after navigation
+        const defaultSession = process.env.DEFAULT_SESSION || 'default';
+        const sessions = sessionManager.listSessions();
+        
+        if (sessions.includes(defaultSession)) {
+          try {
+            await sessionManager.importSession(page, defaultSession);
+            console.log(`✅ Session "${defaultSession}" imported`);
+            
+            // Reload page to apply session data
+            await page.reload({ waitUntil: 'domcontentloaded' });
+          } catch (e) {
+            console.warn(`⚠️ Could not import session "${defaultSession}":`, e);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to navigate to ChatGPT:', error);
+      }
+    }
+
+    console.log('✅ Services initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize services:', error);
+    throw error;
+  }
+}
+
+/**
+ * Process article generation job from queue
+ */
+async function processArticleJob(job: ArticleJob): Promise<void> {
+  if (!articleService) {
+    throw new Error('Article service not initialized');
+  }
+
+  console.log(`\n📝 Processing article job: ${job.id}`);
+  console.log(`   Topic: ${job.topic}`);
+  console.log(`   Keywords: ${job.keywords?.join(', ') || 'none'}`);
+  console.log(`   Category: ${job.category || 'none'}`);
+
+  try {
+    const article = await articleService.generateArticle({
+      topic: job.topic,
+      keywords: job.keywords,
+      category: job.category,
+      author: job.author,
+      sessionName: job.sessionName,
+    });
+
+    console.log(`✅ Article generated successfully: ${article.id}`);
+    console.log(`   Title: ${article.title}`);
+    console.log(`   Word Count: ${article.wordCount}`);
+  } catch (error) {
+    console.error(`❌ Failed to generate article for job ${job.id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Start consuming jobs from RabbitMQ queue
+ */
+async function startQueueConsumer(): Promise<void> {
+  if (!articleService) {
+    console.warn('⚠️ Article service not initialized, skipping queue consumer');
+    return;
+  }
+
+  try {
+    console.log('\n👂 Starting queue consumer...');
+    console.log('📬 Listening for article generation jobs...\n');
+
+    // Start consuming jobs
+    await queueService.consumeArticleJobs(
+      async (job) => {
+        await processArticleJob(job);
+      },
+      { prefetch: 1 } // Process one job at a time (one browser)
+    );
+  } catch (error) {
+    console.error('❌ Failed to start queue consumer:', error);
+    // Don't throw - allow server to continue running even if queue fails
+  }
+}
+
+// Routes
+app.use('/api/articles', (req, res, next) => {
+  if (!articleService) {
+    return res.status(503).json({
+      success: false,
+      error: 'Services not initialized',
+    });
+  }
+  next();
+}, createArticleRoutes(articleService!));
+
+// Session management endpoints
+app.post('/api/sessions/export', async (req, res) => {
+  try {
+    const { sessionName } = req.body;
+    
+    if (!sessionName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session name is required',
+      });
+    }
+
+    if (!chatgptScraper) {
+      return res.status(503).json({
+        success: false,
+        error: 'Scraper not initialized',
+      });
+    }
+
+    await chatgptScraper.exportSession(sessionName);
+
+    res.json({
+      success: true,
+      message: `Session "${sessionName}" exported successfully`,
+    });
+  } catch (error) {
+    console.error('Error exporting session:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.get('/api/sessions', (req, res) => {
+  try {
+    const sessions = sessionManager.listSessions();
+    res.json({
+      success: true,
+      data: sessions,
+    });
+  } catch (error) {
+    console.error('Error listing sessions:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Start server
+async function startServer() {
+  try {
+    await initializeServices();
+    
+    app.listen(PORT, async () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`📝 API: http://localhost:${PORT}/api/articles`);
+      
+      // Start queue consumer after server is ready
+      await startQueueConsumer();
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Shutting down...');
+  await queueService.close();
+  await chromeManager.close();
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Shutting down...');
+  await queueService.close();
+  await chromeManager.close();
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+startServer();
+
