@@ -178,84 +178,59 @@ export class ChatGPTScraper {
 
   /**
    * Wait for ChatGPT to finish generating response
-   * Uses voice button to track if chat has successfully generated
+   * Modified: Waits for the presence of the 2nd copy button (User + AI)
    */
   async waitForResponse(timeout: number = 120000): Promise<void> {
-    console.log('⏳ Waiting for ChatGPT response...');
+    console.log('⏳ Waiting for ChatGPT response (Copy Button Strategy)...');
     
     const startTime = Date.now();
     
     try {
-      // Wait for the voice button to appear and be enabled
-      // The voice button becomes enabled when the response is complete
-      // Button has aria-label="Start voice mode" and class "composer-submit-button-color"
+      // Kita menunggu sampai jumlah tombol copy minimal 2
+      // Index 0 = Prompt User
+      // Index 1 = Response AI (muncul setelah selesai generate)
       await this.page.waitForFunction(
         () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const doc = (globalThis as any).document;
-          
-          // Find voice button by aria-label="Start voice mode"
-          const voiceButton = Array.from(doc.querySelectorAll('button')).find(
-            (btn: any) => {
-              const ariaLabel = btn.getAttribute('aria-label');
-              return ariaLabel === 'Start voice mode';
-            }
-          ) as any;
-          
-          if (voiceButton) {
-            // Check if button is enabled (not disabled)
-            // The button is disabled when it has the disabled attribute or disabled classes
-            const isDisabled = voiceButton.hasAttribute('disabled') || 
-                              voiceButton.getAttribute('disabled') === 'true' ||
-                              voiceButton.classList.contains('disabled');
-            
-            // Also check computed style - disabled buttons have opacity-30
-            const computedStyle = (globalThis as any).window?.getComputedStyle(voiceButton);
-            const isVisuallyDisabled = computedStyle ? parseFloat(computedStyle.opacity) <= 0.3 : false;
-            
-            // Button is ready when it's not disabled
-            return !isDisabled && !isVisuallyDisabled;
-          }
-          return false;
+          const buttons = doc.querySelectorAll('button[data-testid="copy-turn-action-button"]');
+          return buttons.length >= 2;
         },
         { timeout }
       );
       
-      // Additional wait to ensure content is fully rendered
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Tambahan delay sedikit untuk memastikan render icon selesai
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`✅ Response received (${elapsed}s)`);
+      console.log(`✅ Response received (Copy button detected in ${elapsed}s)`);
     } catch (error) {
-      throw new Error(`Timeout waiting for response: ${error}`);
+      throw new Error(`Timeout waiting for response (Copy button not found): ${error}`);
     }
   }
 
   /**
    * Copy the generated content using ChatGPT's copy button
-   * This ensures we get the content in markdown format
+   * Assumes waitForResponse has already confirmed the button exists
    */
   async copyResponse(): Promise<string> {
-    console.log('📋 Copying response content using ChatGPT copy button...');
+    console.log('📋 Copying response content...');
     
     try {
-      // Wait for at least one copy button to be available
-      await this.page.waitForSelector('button[data-testid="copy-turn-action-button"]', {
-        timeout: 10000,
-      });
-
-      // Find all copy buttons (there are two: one for user message, one for GPT response)
-      // We want the second one (last one) which is for the GPT response
+      // Cari index tombol terakhir (seharusnya tombol AI)
       const copyButtonIndex = await this.page.evaluate(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const doc = (globalThis as any).document;
         const buttons = Array.from(doc.querySelectorAll('button[data-testid="copy-turn-action-button"]'));
-        
-        // Return the index of the last button (which should be for GPT response)
-        return buttons.length > 1 ? buttons.length - 1 : 0;
+        // Return index terakhir
+        return buttons.length > 0 ? buttons.length - 1 : -1;
       });
 
-      // Click the second/last copy button (GPT response)
+      if (copyButtonIndex === -1) {
+        throw new Error('Copy button not found');
+      }
+
+      // Click tombol copy terakhir
       await this.page.evaluate((index) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const doc = (globalThis as any).document;
@@ -265,138 +240,51 @@ export class ChatGPTScraper {
         }
       }, copyButtonIndex);
       
-      // Wait a bit for clipboard to be populated
+      console.log('✅ Copy button clicked');
+
+      // Tunggu clipboard terisi
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Get content from clipboard (this will be in markdown format)
+      // Ambil isi clipboard
       const markdownContent = await this.page.evaluate(async () => {
         try {
-          // Try to read from clipboard (ChatGPT copies in markdown format)
           const clipboardText = await (navigator as any).clipboard?.readText();
-          if (clipboardText && clipboardText.trim().length > 0) {
-            return clipboardText;
-          }
+          return clipboardText || '';
         } catch (error) {
-          console.warn('Could not read from clipboard:', error);
+          console.warn('Could not read from clipboard directly:', error);
+          return '';
         }
-        return '';
       });
 
       if (markdownContent && markdownContent.trim().length > 0) {
-        console.log('✅ Response copied in markdown format');
+        console.log('✅ Content retrieved from clipboard');
         return markdownContent.trim();
       }
 
-      // If clipboard method failed, fallback to extracting markdown from DOM
-      console.log('⚠️ Clipboard method failed, extracting markdown from DOM...');
-      const markdownContentFallback = await this.page.evaluate((extractMarkdown: string) => {
+      // --- Fallback: Extract dari DOM jika Clipboard API gagal (misal context permission) ---
+      console.log('⚠️ Clipboard empty, extracting from DOM as fallback...');
+      
+      const domContent = await this.page.evaluate(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const doc = (globalThis as any).document;
-        
-        // Find the copy button to locate the message
-        const copyButton = doc.querySelector('button[data-testid="copy-turn-action-button"]');
-        if (!copyButton) {
-          return '';
-        }
-        
-        // Find message container
-        let messageContainer = copyButton.closest('[data-message-author-role="assistant"]') ||
-                              copyButton.closest('.group.w-full') ||
-                              copyButton.closest('[class*="message"]');
-        
-        if (!messageContainer) {
-          return '';
-        }
-        
-        // Extract markdown from the message
-        const result: string[] = [];
-        const clone = messageContainer.cloneNode(true) as any;
-        
-        // Remove buttons, icons, and UI elements
-        const removeElements = clone.querySelectorAll('button, [class*="icon"], [class*="button"], nav, header');
-        removeElements.forEach((el: any) => el.remove());
-        
-        // Convert to markdown
-        const processNode = (node: any): void => {
-          if (node.nodeType === 3) { // Text node
-            const text = node.textContent?.trim();
-            if (text) result.push(text);
-          } else if (node.nodeType === 1) { // Element node
-            const tagName = node.tagName?.toLowerCase();
-            const text = node.textContent?.trim();
-            
-            if (!text || node.classList?.contains('hidden')) return;
-            
-            switch (tagName) {
-              case 'h1': result.push(`\n# ${text}\n`); break;
-              case 'h2': result.push(`\n## ${text}\n`); break;
-              case 'h3': result.push(`\n### ${text}\n`); break;
-              case 'h4': result.push(`\n#### ${text}\n`); break;
-              case 'p': result.push(`\n${text}\n`); break;
-              case 'ul':
-                Array.from(node.children || []).forEach((li: any, idx: number) => {
-                  const liText = li.textContent?.trim();
-                  if (liText) result.push(`- ${liText}\n`);
-                });
-                break;
-              case 'ol':
-                Array.from(node.children || []).forEach((li: any, idx: number) => {
-                  const liText = li.textContent?.trim();
-                  if (liText) result.push(`${idx + 1}. ${liText}\n`);
-                });
-                break;
-              case 'code':
-                const parent = node.parentElement;
-                if (parent?.tagName?.toLowerCase() === 'pre') {
-                  result.push(`\n\`\`\`\n${text}\n\`\`\`\n`);
-                } else {
-                  result.push(`\`${text}\``);
-                }
-                break;
-              case 'pre':
-                if (!node.querySelector('code')) {
-                  result.push(`\n\`\`\`\n${text}\n\`\`\`\n`);
-                }
-                break;
-              case 'strong':
-              case 'b':
-                result.push(`**${text}**`);
-                break;
-              case 'em':
-              case 'i':
-                result.push(`*${text}*`);
-                break;
-              case 'a':
-                const href = node.getAttribute('href');
-                result.push(`[${text}](${href || '#'})`);
-                break;
-              case 'blockquote':
-                text.split('\n').forEach((line: string) => {
-                  if (line.trim()) result.push(`> ${line}\n`);
-                });
-                break;
-              default:
-                if (text && !result[result.length - 1]?.includes(text)) {
-                  result.push(text);
-                }
-            }
-          }
-        };
-        
-        Array.from(clone.childNodes || []).forEach((child: any) => processNode(child));
-        
-        return result.join('')
-          .replace(/\n{3,}/g, '\n\n')
-          .replace(/[ \t]+$/gm, '')
-          .trim();
-      }, '');
+        // Ambil container pesan terakhir (message group terakhir)
+        const messageGroups = doc.querySelectorAll('[data-message-author-role="assistant"]');
+        const lastMessage = messageGroups[messageGroups.length - 1];
 
-      if (markdownContentFallback && markdownContentFallback.trim().length > 0) {
-        console.log('✅ Response extracted in markdown format');
-        return markdownContentFallback.trim();
-      }
+        if (!lastMessage) return '';
 
-      throw new Error('Could not extract response content');
+        // Clone untuk manipulasi aman
+        const clone = lastMessage.cloneNode(true) as any;
+        
+        // Hapus elemen UI pengganggu (tombol copy, regenerate, dll)
+        const uiElements = clone.querySelectorAll('button, [role="button"], .text-xs');
+        uiElements.forEach((el: any) => el.remove());
+
+        return clone.innerText || clone.textContent || '';
+      });
+
+      return domContent.trim();
+
     } catch (error) {
       throw new Error(`Failed to copy response: ${error instanceof Error ? error.message : String(error)}`);
     }
