@@ -284,9 +284,23 @@ export class BrowserManager {
       this.browser = await this.connectToRemote();
       return this.browser;
     } catch {
-      // If connection fails, launch new instance
-      this.browser = await this.launchWithDebugging();
-      return this.browser;
+      // If connection fails, launch new instance using launchMultiple
+      const debugPort = this.config.debugPort || 9222;
+      const sessionFile = process.env.DEFAULT_SESSION ? `sessions/${process.env.DEFAULT_SESSION}.bin` : undefined;
+      
+      // Launch single instance using launchMultiple
+      const configs = await this.launchMultiple(debugPort, 1, sessionFile);
+      
+      if (configs.length > 0) {
+        // Connect to the launched browser using wsUrl
+        const config = configs[0];
+        this.browser = await puppeteer.connect({
+          browserWSEndpoint: config.wsUrl,
+        });
+        return this.browser;
+      } else {
+        throw new Error('Failed to launch browser instance');
+      }
     }
   }
 
