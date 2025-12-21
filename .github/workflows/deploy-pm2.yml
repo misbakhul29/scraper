@@ -28,7 +28,7 @@ jobs:
       - name: Create .env file from secrets
         run: |
           mkdir -p deploy-package
-          echo "${{ secrets.ENV_FILE }}" > deploy-package/.env
+          echo "${{ secrets.ENV_FILE }}" > .env
           echo "✅ .env file created from ENV_FILE secret"    
 
       - name: Install dependencies
@@ -43,6 +43,7 @@ jobs:
       - name: Create deployment package
         run: |
           mkdir -p deploy-package
+          cp .env deploy-package/
           cp -r dist deploy-package/
           cp -r src/generated deploy-package/src/ 2>/dev/null || true
           cp package*.json deploy-package/
