@@ -73,7 +73,23 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
           script: |
+            # --- FIX: LOAD ENVIRONMENT VARIABLES ---
+            # Paksa load profile user agar npm/pm2 terbaca
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            
+            # Jika tidak pakai NVM, coba uncomment baris di bawah ini:
+            # source ~/.bashrc
+            # source ~/.profile
+            # export PATH=$PATH:/usr/local/bin
+            # ---------------------------------------
+
             set -e
+
+            # Cek versi node/pm2 untuk memastikan sudah terbaca
+            echo "Node version: $(node -v)"
+            echo "NPM version: $(npm -v)"
+            echo "PM2 version: $(pm2 -v)"
             
             APP_DIR="${{ secrets.VPS_APP_DIR || '/opt/scraper' }}"
             BACKUP_DIR="$APP_DIR/backups"
