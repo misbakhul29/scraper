@@ -349,20 +349,16 @@ export class BrowserManager {
       const chromeArgs = [
         `--remote-debugging-port=${port}`,
         `--user-data-dir=${userDataDir}`,
-        '--no-first-run',
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--no-first-run',
         '--no-default-browser-check',
-        '--disable-popup-blocking',
+        '--disable-features=Translate',
         '--disable-extensions',
         '--disable-background-networking',
-        '--disable-session-crashed-bubble',
-        '--hide-crash-restore-bubble',
-        '--enable-features=ClipboardContentSetting',
-        '--disable-blink-features=AutomationControlled',
-        '--exclude-switches=enable-automation',
+        '--disable-sync',
       ];
 
       const timestamp = new Date().toISOString();
@@ -374,14 +370,7 @@ export class BrowserManager {
       
       if (isProduction && isLinux) {
         // Production Linux: Use xvfb-run with nohup
-        const xvfbArgs = [
-          '--auto-servernum',
-          '--server-args=-screen 0 1280x1024x24',
-          chromePath,
-          ...chromeArgs,
-        ];
-        
-        const command = `nohup xvfb-run ${xvfbArgs.join(' ')} >> ${logFile} 2>&1 &`;
+        const command = `nohup xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" ${chromePath} ${chromeArgs.join(' ')} >> ${logFile} 2>&1 &`;
         fs.appendFileSync(logFile, `Command: ${command}\n\n`, 'utf8');
         
         console.log(`📝 [Browser ${i + 1}/${count}] Starting Chrome on port ${port} (xvfb-run), logging to: ${logFile}`);
