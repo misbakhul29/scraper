@@ -6,12 +6,30 @@
 
 Tambahkan secrets berikut di GitHub Repository Settings > Secrets and variables > Actions:
 
+#### VPS Connection Secrets:
 1. **VPS_HOST** - IP address atau domain VPS (contoh: `192.168.1.100` atau `vps.example.com`)
 2. **VPS_USER** - Username SSH (contoh: `root` atau `deploy`)
 3. **VPS_SSH_KEY** - Private SSH key untuk koneksi ke VPS
 4. **VPS_SSH_PORT** - Port SSH (opsional, default: `22`)
 5. **VPS_APP_DIR** - Directory aplikasi di VPS (opsional, default: `/opt/scraper`)
 6. **VPS_APP_URL** - URL aplikasi untuk health check (opsional, contoh: `http://localhost:3000`)
+
+#### Environment Variables Secret (untuk .env file):
+7. **ENV_FILE** - Seluruh konten file .env (required)
+   - Copy seluruh konten file `.env` production ke secret ini
+   - Contoh format:
+     ```
+     NODE_ENV=production
+     PORT=3000
+     DATABASE_URL=postgresql://user:password@localhost:5432/chatgpt_scraper?schema=public
+     CHROME_DEBUG_PORT=9222
+     CHROME_USER_DATA_DIR=/opt/scraper/chrome-data
+     RABBITMQ_HOST=localhost
+     RABBITMQ_PORT=5672
+     RABBITMQ_USER=guest
+     RABBITMQ_PASSWORD=guest
+     DEFAULT_SESSION=default
+     ```
 
 ### Generate SSH Key
 

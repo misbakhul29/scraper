@@ -34,6 +34,12 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+      - name: Create .env file from secrets
+        run: |
+          mkdir -p deploy-package
+          echo "${{ secrets.ENV_FILE }}" > deploy-package/.env
+          echo "✅ .env file created from ENV_FILE secret"
+
       - name: Create deployment package
         run: |
           mkdir -p deploy-package
@@ -42,8 +48,8 @@ jobs:
           cp package*.json deploy-package/
           cp tsconfig.json deploy-package/
           cp prisma deploy-package/ -r
-          cp .env.example deploy-package/ 2>/dev/null || true
           # Copy session files if they exist (optional)
+          mkdir -p deploy-package/sessions
           cp sessions/*.bin deploy-package/sessions/ 2>/dev/null || true
           tar -czf deploy-package.tar.gz deploy-package/
 
@@ -98,9 +104,44 @@ jobs:
             pm2 stop scraper || true
             pm2 delete scraper || true
             
-            # Copy files
+            # Copy files (but preserve existing .env if it exists)
             echo "📋 Copying files..."
+            if [ -f "$APP_DIR/.env" ]; then
+              echo "✅ Preserving existing .env file"
+              cp $APP_DIR/.env $APP_DIR/.env.backup
+            fi
             cp -r deploy-package/* $APP_DIR/
+            
+            # Restore .env backup if deployment didn't include one, or use the new one
+            if [ -f "$APP_DIR/.env.backup" ] && [ ! -f "deploy-package/.env" ]; then
+              echo "📋 Restoring .env from backup"
+              mv $APP_DIR/.env.backup $APP_DIR/.env
+            elif [ -f "$APP_DIR/.env.backup" ]; then
+              echo "📋 Using new .env file from deployment"
+              rm $APP_DIR/.env.backup
+            fi
+            
+            # Ensure .env file exists and has correct permissions
+            if [ -f "$APP_DIR/.env" ]; then
+              echo "✅ .env file configured"
+              chmod 600 $APP_DIR/.env
+            else
+              echo "⚠️ .env file not found, creating from template..."
+              cat > $APP_DIR/.env << 'EOF'
+            NODE_ENV=production
+            PORT=3000
+            DATABASE_URL=postgresql://user:password@localhost:5432/chatgpt_scraper?schema=public
+            CHROME_DEBUG_PORT=9222
+            CHROME_USER_DATA_DIR=/opt/scraper/chrome-data
+            RABBITMQ_HOST=localhost
+            RABBITMQ_PORT=5672
+            RABBITMQ_USER=guest
+            RABBITMQ_PASSWORD=guest
+            DEFAULT_SESSION=default
+            EOF
+              chmod 600 $APP_DIR/.env
+              echo "⚠️ Please update .env file with correct values!"
+            fi
             
             # Install dependencies
             echo "📦 Installing dependencies..."
