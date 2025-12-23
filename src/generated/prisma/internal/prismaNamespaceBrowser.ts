@@ -53,7 +53,8 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   Article: 'Article',
   ArticleSEO: 'ArticleSEO',
-  ArticleContent: 'ArticleContent'
+  ArticleContent: 'ArticleContent',
+  IpAccess: 'IpAccess'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -135,6 +136,18 @@ export const ArticleContentScalarFieldEnum = {
 } as const
 
 export type ArticleContentScalarFieldEnum = (typeof ArticleContentScalarFieldEnum)[keyof typeof ArticleContentScalarFieldEnum]
+
+
+export const IpAccessScalarFieldEnum = {
+  id: 'id',
+  ip: 'ip',
+  status: 'status',
+  requestedAt: 'requestedAt',
+  approvedAt: 'approvedAt',
+  note: 'note'
+} as const
+
+export type IpAccessScalarFieldEnum = (typeof IpAccessScalarFieldEnum)[keyof typeof IpAccessScalarFieldEnum]
 
 
 export const SortOrder = {

@@ -386,7 +386,8 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   Article: 'Article',
   ArticleSEO: 'ArticleSEO',
-  ArticleContent: 'ArticleContent'
+  ArticleContent: 'ArticleContent',
+  IpAccess: 'IpAccess'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -402,7 +403,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "article" | "articleSEO" | "articleContent"
+    modelProps: "article" | "articleSEO" | "articleContent" | "ipAccess"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -628,6 +629,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    IpAccess: {
+      payload: Prisma.$IpAccessPayload<ExtArgs>
+      fields: Prisma.IpAccessFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.IpAccessFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.IpAccessFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>
+        }
+        findFirst: {
+          args: Prisma.IpAccessFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.IpAccessFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>
+        }
+        findMany: {
+          args: Prisma.IpAccessFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>[]
+        }
+        create: {
+          args: Prisma.IpAccessCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>
+        }
+        createMany: {
+          args: Prisma.IpAccessCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.IpAccessCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>[]
+        }
+        delete: {
+          args: Prisma.IpAccessDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>
+        }
+        update: {
+          args: Prisma.IpAccessUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>
+        }
+        deleteMany: {
+          args: Prisma.IpAccessDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.IpAccessUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.IpAccessUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>[]
+        }
+        upsert: {
+          args: Prisma.IpAccessUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$IpAccessPayload>
+        }
+        aggregate: {
+          args: Prisma.IpAccessAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateIpAccess>
+        }
+        groupBy: {
+          args: Prisma.IpAccessGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.IpAccessGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.IpAccessCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.IpAccessCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -730,6 +805,18 @@ export const ArticleContentScalarFieldEnum = {
 } as const
 
 export type ArticleContentScalarFieldEnum = (typeof ArticleContentScalarFieldEnum)[keyof typeof ArticleContentScalarFieldEnum]
+
+
+export const IpAccessScalarFieldEnum = {
+  id: 'id',
+  ip: 'ip',
+  status: 'status',
+  requestedAt: 'requestedAt',
+  approvedAt: 'approvedAt',
+  note: 'note'
+} as const
+
+export type IpAccessScalarFieldEnum = (typeof IpAccessScalarFieldEnum)[keyof typeof IpAccessScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -862,6 +949,20 @@ export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, '
 export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
     
 
+
+/**
+ * Reference to a field of type 'IpStatus'
+ */
+export type EnumIpStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'IpStatus'>
+    
+
+
+/**
+ * Reference to a field of type 'IpStatus[]'
+ */
+export type ListEnumIpStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'IpStatus[]'>
+    
+
 /**
  * Batch Payload for updateMany & deleteMany & createMany
  */
@@ -960,6 +1061,7 @@ export type GlobalOmitConfig = {
   article?: Prisma.ArticleOmit
   articleSEO?: Prisma.ArticleSEOOmit
   articleContent?: Prisma.ArticleContentOmit
+  ipAccess?: Prisma.IpAccessOmit
 }
 
 /* Types for Logging */

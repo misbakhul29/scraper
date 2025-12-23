@@ -11,4 +11,5 @@
 export type * from './models/Article'
 export type * from './models/ArticleSEO'
 export type * from './models/ArticleContent'
+export type * from './models/IpAccess'
 export type * from './commonInputTypes'

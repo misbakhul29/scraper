@@ -91,3 +91,21 @@ enum ArticleStatus {
   PUBLISHED
   ARCHIVED
 }
+
+enum IpStatus {
+  PENDING
+  WHITELIST
+  BLACKLIST
+}
+
+model IpAccess {
+  id         String   @id @default(cuid())
+  ip         String   @unique
+  status     IpStatus @default(PENDING)
+  requestedAt DateTime @default(now())
+  approvedAt DateTime?
+  note       String?
+
+  @@index([ip])
+  @@map("ip_access")
+}

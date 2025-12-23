@@ -8,6 +8,7 @@ import { queueService, ArticleJob } from './services/queue-service';
 import { createArticleRoutes } from './routes/article.routes';
 import axios from 'axios';
 import crypto from 'crypto';
+import path from 'path';
 import { removeAutomationDetection, setRealisticBrowser } from './utils/stealth-helper';
 import { prisma } from './lib/prisma'
 
@@ -33,6 +34,13 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 // Payload sanitization (remove scripts/event handlers/javascript: URLs from incoming payloads)
 import { sanitizePayload } from './middleware/sanitize-payload';
 app.use(sanitizePayload());
+
+// HTML documentation (human-friendly)
+const publicDir = path.join(__dirname, '..', 'public');
+app.use('/public', express.static(publicDir));
+app.get('/', (req, res) => {
+  res.sendFile(path.join(publicDir, 'docs.html'));
+});
 
 // Health check
 app.get('/health', (req, res) => {

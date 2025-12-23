@@ -32,3 +32,8 @@ export type ArticleSEO = Prisma.ArticleSEOModel
  * 
  */
 export type ArticleContent = Prisma.ArticleContentModel
+/**
+ * Model IpAccess
+ * 
+ */
+export type IpAccess = Prisma.IpAccessModel

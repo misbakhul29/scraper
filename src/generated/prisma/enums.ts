@@ -16,3 +16,12 @@ export const ArticleStatus = {
 } as const
 
 export type ArticleStatus = (typeof ArticleStatus)[keyof typeof ArticleStatus]
+
+
+export const IpStatus = {
+  PENDING: 'PENDING',
+  WHITELIST: 'WHITELIST',
+  BLACKLIST: 'BLACKLIST'
+} as const
+
+export type IpStatus = (typeof IpStatus)[keyof typeof IpStatus]
