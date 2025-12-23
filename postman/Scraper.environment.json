@@ -1,0 +1,23 @@
+{
+  "id": "scraper-local-env",
+  "name": "Scraper Local",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "enabled": true
+    },
+    {
+      "key": "adminKey",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "ipId",
+      "value": "",
+      "enabled": true
+    }
+  ],
+  "timestamp": 0,
+  "owner": ""
+}

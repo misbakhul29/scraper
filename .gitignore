@@ -12,3 +12,4 @@ chrome-data/*
 articles/*
 tmp/*
 sessions/default.json
+logs/webhooks/*

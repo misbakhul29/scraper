@@ -35,7 +35,13 @@
   -H "Content-Type: application/json" \
   -d '{"topic":"My topic","webhookUrl":"https://example.com/webhook","webhookSecret":"s3cr3t"}'</code></pre>
       <p>Webhook receives a JSON POST: <code>{ success: true, jobId, data }</code> and a header <code>X-Webhook-Signature</code> when a secret is provided.</p>
-
+      <h3>POST /api/webhook/test</h3>
+      <p>Test endpoint that accepts webhook POSTs and stores them to <code>/logs/webhooks/*.json</code>. If you provide a secret (either as query <code>?secret=...</code> or header <code>X-Webhook-Secret</code>), include header <code>X-Webhook-Signature</code> with HMAC-SHA256 hex of the JSON body to verify signature.</p>
+      <pre><code>curl -X POST http://localhost:3000/api/webhook/test \
+  -H "Content-Type: application/json" \
+  -H "X-Webhook-Secret: s3cr3t" \
+  -H "X-Webhook-Signature: $(echo -n '{"jobId":"1"}' | openssl dgst -sha256 -hmac "s3cr3t" | sed 's/^.*= //')" \
+  -d '{"jobId":"1","result":"ok"}'</code></pre>
       <h3>GET /api/articles/queue/status</h3>
       <p>Queue status (messageCount, consumerCount).</p>
     </section>
@@ -61,6 +67,7 @@
         <li><strong>PENDING</strong> — Returns <code>403</code> with message <em>Your IP is waiting approval</em> (or asks to POST /api/ip/request if no record exists).</li>
         <li><strong>BLACKLIST</strong> — Returns <code>403</code> with a friendly quote ("kata-kata mutiara").</li>
       </ul>
+      <p>Postman collection for testing: <a href="/public/postman/Scraper.postman_collection.json">Download collection JSON</a> and import into Postman. Use the included environment <code>Scraper Local</code> (file: <code>Scraper.environment.json</code>).</p>
     </section>
 
     <section>

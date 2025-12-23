@@ -68,7 +68,7 @@ export function createArticleRoutes(articleService: ArticleService): Router {
    * POST /api/articles/generate-public
    * Public endpoint: queue article generation and optionally notify a webhook when the article is generated
    */
-  router.post('/generate-public', ipAccessMiddleware(), rateLimit({ windowMs: 60_000, max: 5 }), async (req: Request, res: Response) => {
+  router.post('/generate', ipAccessMiddleware(), rateLimit({ windowMs: 60_000, max: 5 }), async (req: Request, res: Response) => {
     try {
       const validated = publicArticleSchema.parse(req.body);
 
@@ -220,64 +220,7 @@ export function createArticleRoutes(articleService: ArticleService): Router {
     }
   });
 
-  /**
-   * POST /api/ip/request
-   * Public endpoint to request whitelist for current IP (or a provided IP)
-   */
-  router.post('/ip/request', async (req: Request, res: Response) => {
-    try {
-      const ip = (req.body.ip as string) || (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
-      if (!ip) {
-        return res.status(400).json({ success: false, error: 'IP is required' });
-      }
 
-      const entry = await (await import('../services/ip-access.service')).ipAccessService.requestIp(ip, req.body.note);
-
-      res.json({ success: true, message: 'IP whitelist request submitted', data: { ip: entry.ip, status: entry.status } });
-    } catch (error) {
-      console.error('Error requesting IP whitelist:', error);
-      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  /**
-   * Admin endpoints for managing IPs (protected by ADMIN_API_KEY header)
-   */
-  const adminKey = process.env.ADMIN_API_KEY;
-
-  router.get('/ip', async (req: Request, res: Response) => {
-    try {
-      if (!adminKey || req.headers['x-admin-key'] !== adminKey) {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
-      }
-
-      const list = await (await import('../services/ip-access.service')).ipAccessService.list();
-      res.json({ success: true, data: list });
-    } catch (error) {
-      console.error('Error listing ip entries:', error);
-      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  router.patch('/ip/:id/status', async (req: Request, res: Response) => {
-    try {
-      if (!adminKey || req.headers['x-admin-key'] !== adminKey) {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
-      }
-
-      const { id } = req.params;
-      const { status } = req.body;
-      if (!['PENDING', 'WHITELIST', 'BLACKLIST'].includes(status)) {
-        return res.status(400).json({ success: false, error: 'Invalid status' });
-      }
-
-      const updated = await (await import('../services/ip-access.service')).ipAccessService.updateStatus(id, status as any);
-      res.json({ success: true, data: updated });
-    } catch (error) {
-      console.error('Error updating ip status:', error);
-      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
 
   return router;
 }

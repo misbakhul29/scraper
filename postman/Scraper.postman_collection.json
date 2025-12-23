@@ -1,0 +1,232 @@
+{
+  "info": {
+    "name": "Scraper API - Tests",
+    "_postman_id": "7b2c3e2a-0000-4a1b-9a1b-000000000000",
+    "description": "Collection to test /api/articles/generate and /api/articles/generate-public. See collection-level notes for IP whitelist instructions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Generate Article (internal)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"topic\": \"Postman test: How to cook rendang\",\n  \"keywords\": [\"rendang\", \"cooking\"],\n  \"category\": \"Food\",\n  \"author\": \"Postman\",\n  \"sessionName\": \"default\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/articles/generate",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "articles",
+            "generate"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('response.success is true', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "});",
+              "",
+              "pm.test('response contains jobId and queued status', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.data).to.have.property('jobId');",
+              "  pm.expect(json.data.status).to.eql('queued');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Generate Article (public) - with webhook",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"topic\": \"Postman test (public): How to cook rendang\",\n  \"webhookUrl\": \"{{baseUrl}}/api/webhook/test\",\n  \"webhookSecret\": \"testsecret\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/articles/generate-public",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "articles",
+            "generate-public"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// NOTE: If the server enforces IP whitelist, make sure your IP is whitelisted before running this request.\n",
+              "// You can request whitelist via POST /api/ip/request and have an admin approve it via PATCH /api/ip/:id/status\n"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('response.success is true', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "});",
+              "",
+              "pm.test('response contains jobId and queued status', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.data).to.have.property('jobId');",
+              "  pm.expect(json.data.status).to.eql('queued');",
+              "});",
+              "",
+              "// Optionally: show reminder to check webhook test endpoint for delivery (async)",
+              "console.log('Reminder: webhook delivery is done asynchronously by the worker. Check /logs/webhooks or /api/webhook/test to see received webhooks.');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Request IP Whitelist",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"note\": \"Requesting whitelist for testing Postman\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/ip/request",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "ip",
+            "request"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin: List IP Requests",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Admin-Key",
+            "value": "{{adminKey}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/ip",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "ip"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin: Update IP Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Admin-Key",
+            "value": "{{adminKey}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"WHITELIST\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/ip/{{ipId}}/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "ip",
+            "{{ipId}}",
+            "status"
+          ]
+        }
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Collection-level pre-request script (no-op for now)"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "adminKey",
+      "value": "ADMIN_API_KEY_HERE"
+    },
+    {
+      "key": "ipId",
+      "value": ""
+    }
+  ]
+}

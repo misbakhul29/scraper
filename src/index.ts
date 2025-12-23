@@ -9,6 +9,7 @@ import { createArticleRoutes } from './routes/article.routes';
 import axios from 'axios';
 import crypto from 'crypto';
 import path from 'path';
+import { promises as fs } from 'fs';
 import { removeAutomationDetection, setRealisticBrowser } from './utils/stealth-helper';
 import { prisma } from './lib/prisma'
 
@@ -40,6 +41,54 @@ const publicDir = path.join(__dirname, '..', 'public');
 app.use('/public', express.static(publicDir));
 app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'docs.html'));
+});
+
+// IP routes (separate router)
+import { createIpRoutes } from './routes/ip.routes';
+app.use('/api/ip', createIpRoutes());
+
+// Webhook test endpoint
+app.post('/api/webhook/test', async (req, res) => {
+  try {
+    const headers = req.headers;
+    const body = req.body;
+    const receivedAt = new Date().toISOString();
+
+    // Ensure logs/webhooks directory exists
+    const logsDir = path.join(process.cwd(), 'logs', 'webhooks');
+    await fs.mkdir(logsDir, { recursive: true });
+
+    const filename = `${Date.now()}.json`;
+    const filePath = path.join(logsDir, filename);
+
+    const payload = {
+      receivedAt,
+      headers,
+      body,
+    };
+
+    await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
+
+    // Optional signature verification: client can provide secret as query ?secret= or header x-webhook-secret
+    const signature = (req.headers['x-webhook-signature'] as string) || undefined;
+    const secret = (req.query.secret as string) || (req.headers['x-webhook-secret'] as string) || undefined;
+    let signatureVerified: boolean | null = null;
+
+    if (signature && secret) {
+      try {
+        const bodyString = JSON.stringify(body);
+        const expected = crypto.createHmac('sha256', secret).update(bodyString).digest('hex');
+        signatureVerified = expected === signature;
+      } catch (e) {
+        signatureVerified = false;
+      }
+    }
+
+    res.json({ success: true, saved: `/logs/webhooks/${filename}`, signatureVerified });
+  } catch (error) {
+    console.error('Error in webhook test endpoint:', error);
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+  }
 });
 
 // Health check
