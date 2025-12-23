@@ -87,7 +87,7 @@ export class QueueService {
   /**
    * Publish article generation job to queue
    */
-  async publishArticleJob(job: Omit<ArticleJob, 'id' | 'createdAt'>): Promise<string> {
+  async publishArticleJob(job: Omit<ArticleJob, 'id' | 'createdAt'>): Promise<{ jobId: string; queuePosition?: number }> {
     if (!this.channel) {
       await this.connect();
     }
@@ -119,8 +119,18 @@ export class QueueService {
         throw new Error('Failed to publish message to queue');
       }
 
+      // Get current queue size (messageCount) as an approximation of queue position
+      let queuePosition: number | undefined = undefined;
+      try {
+        const q = await this.channel.checkQueue(this.queueName);
+        // messageCount includes this newly published message
+        queuePosition = q.messageCount;
+      } catch (e) {
+        console.warn('⚠️ Could not retrieve queue size:', e);
+      }
+
       console.log(`📤 Published article job: ${jobId} (Topic: ${job.topic})`);
-      return jobId;
+      return { jobId, queuePosition };
     } catch (error) {
       console.error('❌ Failed to publish article job:', error);
       throw error;

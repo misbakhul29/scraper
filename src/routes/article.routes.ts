@@ -30,7 +30,7 @@ export function createArticleRoutes(articleService: ArticleService): Router {
       const validated = articleSchema.parse(req.body);
       
       // Publish job to queue instead of processing directly
-      const jobId = await queueService.publishArticleJob({
+      const { jobId, queuePosition } = await queueService.publishArticleJob({
         topic: validated.topic,
         keywords: validated.keywords,
         category: validated.category,
@@ -45,6 +45,7 @@ export function createArticleRoutes(articleService: ArticleService): Router {
           jobId,
           topic: validated.topic,
           status: 'queued',
+          queuePosition: queuePosition ?? null,
         },
       });
     } catch (error) {
@@ -73,7 +74,7 @@ export function createArticleRoutes(articleService: ArticleService): Router {
       const validated = publicArticleSchema.parse(req.body);
 
       // Publish job including webhook info
-      const jobId = await queueService.publishArticleJob({
+      const { jobId, queuePosition } = await queueService.publishArticleJob({
         topic: validated.topic,
         keywords: validated.keywords,
         category: validated.category,
@@ -90,6 +91,7 @@ export function createArticleRoutes(articleService: ArticleService): Router {
           jobId,
           topic: validated.topic,
           status: 'queued',
+          queuePosition: queuePosition ?? null,
         },
       });
     } catch (error) {
