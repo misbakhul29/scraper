@@ -95,54 +95,54 @@ export class ArticleService {
    * Build prompt for article generation
    */
   private buildArticlePrompt(topic: string, keywords: string[], category?: string): string {
-    // Base instructions for context
-    let prompt = `Act as an expert content writer and subject matter authority. Write a comprehensive, high-quality, and SEO-optimized article about "${topic}".\n\n`;
-  
-    // Context injection
-    if (category) {
-      prompt += `Context/Category: ${category}\n`;
-    }
-  
-    if (keywords.length > 0) {
-      prompt += `Target Keywords (integrate naturally): ${keywords.join(', ')}\n`;
-    }
-  
-    // The "Power" Instructions
-    prompt += `
-  \nDetailed Guidelines for Excellence:
-  
-  1. TONE & STYLE:
-     - **Tone:** Conversational, engaging, yet professional ("Smart Casual"). Avoid overly formal/stiff language (bahasa baku/kaku). Write as if explaining to a smart peer.
-     - **Voice:** Use active voice. Be direct and authoritative.
-     - **Clarity:** Avoid fluff. Get straight to the value.
-  
-  2. STRUCTURE & DEPTH:
-     - **Word Count:** Minimum 1500 words.
-     - **Heading Hierarchy:** Use H2 for main sections and H3 for subsections.
-     - **Section Depth:** Do NOT write thin content. Each H3 section must be substantial (minimum 3-4 paragraphs) to thoroughly cover the sub-topic.
-  
-  3. VISUAL VARIETY & ELEMENTS (CRITICAL):
-     - **No Walls of Text:** You MUST break up long text using various formatting elements.
-     - **Lists:** Use **bullet points** or **numbered lists** for steps, features, benefits, or checklists.
-     - **Tables:** You MUST include at least one **Markdown Table** where relevant (e.g., Pros vs Cons, Comparison of features, "Before vs After", or pricing/data summary).
-     - **Quotes/Callouts:** Use **Blockquotes** (>) to highlight "Pro Tips", key takeaways, warnings, or important statistics.
-     - **Bold Text:** Use bolding strategically to emphasize key phrases (but don't overdo it).
-  
-  4. SEO & CONTENT QUALITY:
-     - **Semantic SEO:** Use related semantic terms (LSI) to build topical authority.
-     - **Actionable Insights:** Provide practical tips (how-to), not just theory.
-     - **Introduction:** Hook the reader immediately.
-     - **Conclusion:** Summarize key points powerfully.
-  
-  IMPORTANT OUTPUT CONSTRAINTS:
-  1. Start directly with the Article Title (formatted as # H1).
-  2. Follow immediately with the introduction.
-  3. Do NOT include any meta-commentary (e.g., "Here is the article", "I have written...").
-  4. End directly with the conclusion. Do NOT add conversational closing remarks (e.g., "Hope this helps", "Let me know...").
-  `;
-  
-    return prompt;
+  // Base instructions
+  let prompt = `Act as a charismatic content creator and expert storyteller. Write a highly engaging, deep-dive article about "${topic}" that feels like a conversation with a smart friend.\n\n`;
+
+  // Context injection
+  if (category) {
+    prompt += `Context/Category: ${category}\n`;
   }
+
+  if (keywords.length > 0) {
+    prompt += `Target Keywords (integrate naturally): ${keywords.join(', ')}\n`;
+  }
+
+  // The "Gen Z / Storyteller" Instructions
+  prompt += `
+\nDetailed Guidelines for Maximum Engagement:
+
+1. TONE & VIBE (CRITICAL):
+   - **Vibe:** High-energy, witty, and relatable ("Gen Z / Modern Internet Style"). Think "Twitter Thread expert" meets "Medium Top Writer".
+   - **Language Style:** Use conversational hooks. It's okay to be a bit sassy or humorous where appropriate. STRICTLY AVOID dry, academic, or robotic corporate language.
+   - **Connection:** Treat the reader like a close friend. Use "We," "You," and "Let's be honest."
+   - **Storytelling:** Frame concepts as a narrative.
+
+2. STRUCTURE & FLOW (STRICT):
+   - **The "Bridge" Rule:** NEVER jump from an H2 directly to an H3. You MUST write a storytelling bridge paragraph (3-5 sentences) under every H2.
+   - **Headings Format:** **NO EMOJIS IN HEADINGS**. Keep H1, H2, H3 clean and text-only.
+
+3. VISUAL POP & SCANNABILITY (SMART PARAGRAPHING):
+   - **Avoid Fragmentation:** Do NOT write in "LinkedIn Bro" style (one sentence per line). It creates a messy, disjointed look for long articles.
+   - **The "2-4 Rule":** Group related sentences together. Standard paragraphs should be **2 to 4 sentences long** to maintain flow and substance.
+   - **Strategic Brevity:** You may use a single-sentence paragraph ONLY for a massive punchline or transition, but do not overuse it.
+   - **Markdown Magic:** Use **bold** for emphasis, but keep it within the paragraph block.
+   - **Tables & Lists:** MUST include at least one Markdown Table and use lists where data allows to break up the reading rhythm.
+
+4. SUBSTANCE & DEPTH:
+   - **Word Count:** Minimum 1500 words.
+   - **Go Deep:** Don't just scratch the surface. Give the "Secret Sauce".
+   - **Real Talk:** Address common frustrations or myths.
+   - **SEO:** Weave keywords in naturally.
+
+IMPORTANT OUTPUT CONSTRAINTS:
+1. Start directly with a Catchy Title (H1) - Text Only.
+2. Start the Intro with a **Strong Hook**.
+3. Do NOT include any meta-commentary.
+4. End with a "Mic Drop" conclusion.
+`;
+
+  return prompt;
+}
 
   /**
    * Parse article content and extract metadata
@@ -207,17 +207,32 @@ export class ArticleService {
    * Save article to database
    */
   private async saveArticle(data: ArticleData, author?: string): Promise<any> {
-    const slug = this.generateSlug(data.title);
+    const baseSlug = this.generateSlug(data.title);
+    let slug = baseSlug;
     const readingTime = this.calculateReadingTime(data.content);
     const wordCount = this.calculateWordCount(data.content);
 
-    // Check if slug exists
-    const existing = await this.prisma.article.findUnique({
-      where: { slug },
-    });
+    // Ensure slug uniqueness by appending a numeric suffix if needed
+    let counter = 1;
+    while (true) {
+      const existing = await this.prisma.article.findUnique({
+        where: { slug },
+      });
 
-    if (existing) {
-      throw new Error(`Article with slug "${slug}" already exists`);
+      if (!existing) break;
+
+      // Found a collision — append suffix
+      slug = `${baseSlug}-${counter}`;
+      counter += 1;
+
+      // Safety: avoid infinite loop
+      if (counter > 1000) {
+        throw new Error('Failed to generate a unique slug after 1000 attempts');
+      }
+    }
+
+    if (slug !== baseSlug) {
+      console.warn(`⚠️ Slug collision detected. Using fallback slug: ${slug}`);
     }
 
     // Create article with related data

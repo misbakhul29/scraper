@@ -10,6 +10,9 @@ export interface ArticleJob {
   category?: string;
   author?: string;
   sessionName?: string;
+  // Optional webhook information for callbacks
+  webhookUrl?: string;
+  webhookSecret?: string;
   createdAt: number;
 }
 

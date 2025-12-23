@@ -6,6 +6,8 @@ import { ChatGPTScraper } from './services/chatgpt-scraper';
 import { ArticleService } from './services/article-service';
 import { queueService, ArticleJob } from './services/queue-service';
 import { createArticleRoutes } from './routes/article.routes';
+import axios from 'axios';
+import crypto from 'crypto';
 import { removeAutomationDetection, setRealisticBrowser } from './utils/stealth-helper';
 import { prisma } from './lib/prisma'
 
@@ -25,8 +27,12 @@ const chromeManager = new ChromeManager({
 const sessionManager = new SessionManager();
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+
+// Payload sanitization (remove scripts/event handlers/javascript: URLs from incoming payloads)
+import { sanitizePayload } from './middleware/sanitize-payload';
+app.use(sanitizePayload());
 
 // Health check
 app.get('/health', (req, res) => {
@@ -147,6 +153,34 @@ async function processArticleJob(job: ArticleJob): Promise<void> {
     console.log(`✅ Article generated successfully: ${article.id}`);
     console.log(`   Title: ${article.title}`);
     console.log(`   Word Count: ${article.wordCount}`);
+
+    // If webhook info is provided, send generation result as a POST to the webhook URL
+    if (job.webhookUrl) {
+      try {
+        const payload = {
+          success: true,
+          jobId: job.id,
+          data: article,
+        };
+
+        const bodyString = JSON.stringify(payload);
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        if (job.webhookSecret) {
+          const sig = crypto.createHmac('sha256', job.webhookSecret).update(bodyString).digest('hex');
+          headers['X-Webhook-Signature'] = sig;
+        }
+
+        await axios.post(job.webhookUrl, bodyString, { headers, timeout: 10000 });
+        console.log(`✅ Webhook POST successful for job ${job.id} -> ${job.webhookUrl}`);
+      } catch (e) {
+        console.error(`❌ Failed to deliver webhook for job ${job.id} to ${job.webhookUrl}:`, e instanceof Error ? e.message : e);
+        // Do NOT throw - webhook failure should not cause the job to be retried by RabbitMQ
+      }
+    }
   } catch (error) {
     console.error(`❌ Failed to generate article for job ${job.id}:`, error);
     throw error;
@@ -238,6 +272,14 @@ app.get('/api/sessions', (req, res) => {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
+});
+
+// Convert body-parser "entity.too.large" errors into JSON 413 responses
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    return res.status(413).json({ success: false, error: 'Payload too large. Maximum size is 100kb.' });
+  }
+  next(err);
 });
 
 // Start server

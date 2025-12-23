@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ArticleService } from '../services/article-service';
 import { queueService } from '../services/queue-service';
+import { rateLimit } from '../middleware/rate-limit';
 import { z } from 'zod';
 
 const articleSchema = z.object({
@@ -11,14 +12,19 @@ const articleSchema = z.object({
   sessionName: z.string().optional(),
 });
 
+const publicArticleSchema = articleSchema.extend({
+  webhookUrl: z.string().url().optional(),
+  webhookSecret: z.string().optional(),
+});
+
 export function createArticleRoutes(articleService: ArticleService): Router {
   const router = Router();
 
   /**
-   * POST /api/articles/generate
+   * POST /api/articles/create
    * Queue article generation job
    */
-  router.post('/generate', async (req: Request, res: Response) => {
+  router.post('/create', rateLimit({ windowMs: 60_000, max: 5 }), async (req: Request, res: Response) => {
     try {
       const validated = articleSchema.parse(req.body);
       
@@ -42,7 +48,51 @@ export function createArticleRoutes(articleService: ArticleService): Router {
       });
     } catch (error) {
       console.error('Error queueing article:', error);
-      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation error',
+          details: error.errors,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  /**
+   * POST /api/articles/generate-public
+   * Public endpoint: queue article generation and optionally notify a webhook when the article is generated
+   */
+  router.post('/generate', rateLimit({ windowMs: 60_000, max: 5 }), async (req: Request, res: Response) => {
+    try {
+      const validated = publicArticleSchema.parse(req.body);
+
+      // Publish job including webhook info
+      const jobId = await queueService.publishArticleJob({
+        topic: validated.topic,
+        keywords: validated.keywords,
+        category: validated.category,
+        author: validated.author,
+        sessionName: validated.sessionName,
+        webhookUrl: validated.webhookUrl,
+        webhookSecret: validated.webhookSecret,
+      });
+
+      res.json({
+        success: true,
+        message: 'Public article generation job queued',
+        data: {
+          jobId,
+          topic: validated.topic,
+          status: 'queued',
+        },
+      });
+    } catch (error) {
+      console.error('Error queueing public article:', error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           success: false,

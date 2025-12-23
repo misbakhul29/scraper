@@ -1,7 +1,7 @@
 {
-  "name": "gemini-scraper",
+  "name": "scraper",
   "version": "1.0.0",
-  "description": "Gemini AI scraper with Chrome remote debugging",
+  "description": "AI scraper with Chrome remote debugging",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -22,7 +22,7 @@
     "puppeteer",
     "typescript"
   ],
-  "author": "",
+  "author": "Misbakhul Munir",
   "license": "MIT",
   "dependencies": {
     "@prisma/adapter-pg": "^7.2.0",
