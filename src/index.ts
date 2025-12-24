@@ -4,8 +4,10 @@ import { ChromeManager } from './config/chrome';
 import { SessionManager } from './utils/session-manager';
 import { ChatGPTScraper } from './services/chatgpt-scraper';
 import { ArticleService } from './services/article-service';
-import { queueService, ArticleJob } from './services/queue-service';
+import { queueService, ArticleJob, NovelJob } from './services/queue-service';
 import { createArticleRoutes } from './routes/article.routes';
+import { createNovelRoutes } from './routes/novel.routes';
+import { webhookService } from './services/webhook.service';
 import axios from 'axios';
 import crypto from 'crypto';
 import path from 'path';
@@ -47,49 +49,54 @@ app.get('/', (req, res) => {
 import { createIpRoutes } from './routes/ip.routes';
 app.use('/api/ip', createIpRoutes());
 
-// Webhook test endpoint
-app.post('/api/webhook/test', async (req, res) => {
-  try {
-    const headers = req.headers;
-    const body = req.body;
-    const receivedAt = new Date().toISOString();
+// Webhook test endpoint (development only)
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/webhook/test', async (req, res) => {
+    try {
+      const headers = req.headers;
+      const body = req.body;
+      const receivedAt = new Date().toISOString();
 
-    // Ensure logs/webhooks directory exists
-    const logsDir = path.join(process.cwd(), 'logs', 'webhooks');
-    await fs.mkdir(logsDir, { recursive: true });
+      // Ensure logs/webhooks directory exists
+      const logsDir = path.join(process.cwd(), 'logs', 'webhooks');
+      await fs.mkdir(logsDir, { recursive: true });
 
-    const filename = `${Date.now()}.json`;
-    const filePath = path.join(logsDir, filename);
+      const filename = `${Date.now()}.json`;
+      const filePath = path.join(logsDir, filename);
 
-    const payload = {
-      receivedAt,
-      headers,
-      body,
-    };
+      const payload = {
+        receivedAt,
+        headers,
+        body,
+      };
 
-    await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
+      await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
 
-    // Optional signature verification: client can provide secret as query ?secret= or header x-webhook-secret
-    const signature = (req.headers['x-webhook-signature'] as string) || undefined;
-    const secret = (req.query.secret as string) || (req.headers['x-webhook-secret'] as string) || undefined;
-    let signatureVerified: boolean | null = null;
+      // Optional signature verification: client can provide secret as query ?secret= or header x-webhook-secret
+      const signature = (req.headers['x-webhook-signature'] as string) || undefined;
+      const secret = (req.query.secret as string) || (req.headers['x-webhook-secret'] as string) || undefined;
+      let signatureVerified: boolean | null = null;
 
-    if (signature && secret) {
-      try {
-        const bodyString = JSON.stringify(body);
-        const expected = crypto.createHmac('sha256', secret).update(bodyString).digest('hex');
-        signatureVerified = expected === signature;
-      } catch (e) {
-        signatureVerified = false;
+      if (signature && secret) {
+        try {
+          const bodyString = JSON.stringify(body);
+          const expected = crypto.createHmac('sha256', secret).update(bodyString).digest('hex');
+          signatureVerified = expected === signature;
+        } catch (e) {
+          signatureVerified = false;
+        }
       }
-    }
 
-    res.json({ success: true, saved: `/logs/webhooks/${filename}`, signatureVerified });
-  } catch (error) {
-    console.error('Error in webhook test endpoint:', error);
-    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-});
+      res.json({ success: true, saved: `/logs/webhooks/${filename}`, signatureVerified });
+    } catch (error) {
+      console.error('Error in webhook test endpoint:', error);
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+} else {
+  // Webhook test endpoint is disabled in production
+  // (intentionally not registered to avoid exposing a test receiver publicly)
+} 
 
 // Health check
 app.get('/health', (req, res) => {
@@ -99,6 +106,7 @@ app.get('/health', (req, res) => {
 // Initialize browser and services
 let chatgptScraper: ChatGPTScraper | null = null;
 let articleService: ArticleService | null = null;
+let novelService: import('./services/novel-service').NovelService | null = null;
 
 async function initializeServices() {
   // Initialize RabbitMQ connection (for queue status endpoint)
@@ -146,6 +154,7 @@ async function initializeServices() {
     // Initialize scraper and service
     chatgptScraper = new ChatGPTScraper(page, sessionManager);
     articleService = new ArticleService(prisma, chatgptScraper);
+    novelService = new (await import('./services/novel-service')).NovelService(chatgptScraper);
 
     // Navigate to ChatGPT automatically in development
     if (process.env.NODE_ENV !== 'production') {
@@ -211,35 +220,65 @@ async function processArticleJob(job: ArticleJob): Promise<void> {
     console.log(`   Title: ${article.title}`);
     console.log(`   Word Count: ${article.wordCount}`);
 
-    // If webhook info is provided, send generation result as a POST to the webhook URL
+    // If webhook info is provided, send generation result as a POST to the webhook URL via webhook service
     if (job.webhookUrl) {
-      try {
-        const payload = {
-          success: true,
-          jobId: job.id,
-          data: article,
-        };
+      const payload = {
+        success: true,
+        jobId: job.id,
+        data: article,
+      };
 
-        const bodyString = JSON.stringify(payload);
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-
-        if (job.webhookSecret) {
-          const sig = crypto.createHmac('sha256', job.webhookSecret).update(bodyString).digest('hex');
-          headers['X-Webhook-Signature'] = sig;
-        }
-
-        await axios.post(job.webhookUrl, bodyString, { headers, timeout: 10000 });
-        console.log(`✅ Webhook POST successful for job ${job.id} -> ${job.webhookUrl}`);
-      } catch (e) {
-        console.error(`❌ Failed to deliver webhook for job ${job.id} to ${job.webhookUrl}:`, e instanceof Error ? e.message : e);
-        // Do NOT throw - webhook failure should not cause the job to be retried by RabbitMQ
-      }
+      await webhookService.sendWebhook({ url: job.webhookUrl, secret: job.webhookSecret, payload, jobId: job.id, type: 'article' });
     }
   } catch (error) {
     console.error(`❌ Failed to generate article for job ${job.id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Process novel generation job from queue
+ */
+async function processNovelJob(job: NovelJob): Promise<void> {
+  if (!novelService) {
+    throw new Error('Novel service not initialized');
+  }
+
+  console.log(`\n📚 Processing novel job: ${job.id}`);
+  console.log(`   Title: ${job.title || 'untitled'}`);
+
+  try {
+    const result = await novelService.generateNovel({
+      title: job.title,
+      prompt: job.prompt,
+      language: job.language,
+      genre: job.genre,
+      approxWords: job.approxWords,
+      sessionName: job.sessionName,
+    });
+
+    console.log(`✅ Novel generation finished for job ${job.id}`);
+
+    if (job.webhookUrl) {
+      const payload = {
+        success: result.success,
+        jobId: job.id,
+        data: result.success
+          ? {
+              title: job.title || null,
+              language: job.language || 'English',
+              approxWords: job.approxWords || null,
+              wordCount: (result.content || '').split(/\s+/).filter(Boolean).length,
+              content: result.content,
+            }
+          : undefined,
+        error: result.success ? undefined : result.error || 'Failed to generate novel',
+      };
+
+      await webhookService.sendWebhook({ url: job.webhookUrl, secret: job.webhookSecret, payload, jobId: job.id, type: 'novel' });
+    }
+  } catch (error) {
+    console.error(`❌ Failed to generate novel for job ${job.id}:`, error);
     throw error;
   }
 }
@@ -264,6 +303,15 @@ async function startQueueConsumer(): Promise<void> {
       },
       { prefetch: 1 } // Process one job at a time (one browser)
     );
+
+    // Start consuming novels as well (if novel service is initialized)
+    if (novelService) {
+      await queueService.consumeNovelJobs(async (job) => {
+        await processNovelJob(job);
+      }, { prefetch: 1 });
+    } else {
+      console.warn('⚠️ Novel service not initialized, novel jobs will not be processed until service is ready');
+    }
   } catch (error) {
     console.error('❌ Failed to start queue consumer:', error);
     // Don't throw - allow server to continue running even if queue fails
@@ -280,6 +328,13 @@ app.use('/api/articles', (req, res, next) => {
   }
   next();
 }, createArticleRoutes(articleService!));
+
+app.use('/api/novels', (req, res, next) => {
+  if (!novelService) {
+    return res.status(503).json({ success: false, error: 'Services not initialized' });
+  }
+  next();
+}, createNovelRoutes(() => novelService));
 
 // Session management endpoints
 app.post('/api/sessions/export', async (req, res) => {

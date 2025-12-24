@@ -16,6 +16,20 @@ export interface ArticleJob {
   createdAt: number;
 }
 
+export interface NovelJob {
+  id: string;
+  title?: string;
+  prompt?: string;
+  language?: string;
+  genre?: string;
+  approxWords?: number;
+  sessionName?: string;
+  // Optional webhook information for callbacks
+  webhookUrl?: string;
+  webhookSecret?: string;
+  createdAt: number;
+}
+
 export interface QueueStatus {
   queue: string;
   messageCount: number;
@@ -28,6 +42,11 @@ export class QueueService {
   private readonly queueName = 'article_generation';
   private readonly exchangeName = 'article_exchange';
   private readonly routingKey = 'article.generate';
+
+  // Novel queue
+  private readonly novelQueueName = 'novel_generation';
+  private readonly novelExchangeName = 'novel_exchange';
+  private readonly novelRoutingKey = 'novel.generate';
   private readonly rabbitmqUrl: string;
 
   constructor() {
@@ -62,18 +81,31 @@ export class QueueService {
         throw new Error('Channel is null');
       }
 
-      // Declare exchange
+      // Declare article exchange
       await this.channel.assertExchange(this.exchangeName, 'direct', {
         durable: true,
       });
 
-      // Declare queue
+      // Declare article queue
       await this.channel.assertQueue(this.queueName, {
         durable: true, // Queue survives broker restart
       });
 
-      // Bind queue to exchange
+      // Bind article queue to exchange
       await this.channel.bindQueue(this.queueName, this.exchangeName, this.routingKey);
+
+      // Declare novel exchange
+      await this.channel.assertExchange(this.novelExchangeName, 'direct', {
+        durable: true,
+      });
+
+      // Declare novel queue
+      await this.channel.assertQueue(this.novelQueueName, {
+        durable: true,
+      });
+
+      // Bind novel queue to exchange
+      await this.channel.bindQueue(this.novelQueueName, this.novelExchangeName, this.novelRoutingKey);
 
       console.log('✅ Connected to RabbitMQ');
       console.log(`📬 Queue: ${this.queueName}`);
@@ -133,6 +165,57 @@ export class QueueService {
       return { jobId, queuePosition };
     } catch (error) {
       console.error('❌ Failed to publish article job:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Publish novel generation job to queue
+   */
+  async publishNovelJob(job: Omit<NovelJob, 'id' | 'createdAt'>): Promise<{ jobId: string; queuePosition?: number }> {
+    if (!this.channel) {
+      await this.connect();
+    }
+
+    const jobId = `novel-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const novelJob: NovelJob = {
+      id: jobId,
+      ...job,
+      createdAt: Date.now(),
+    };
+
+    if (!this.channel) {
+      throw new Error('Channel is null');
+    }
+
+    try {
+      const published = this.channel.publish(
+        this.novelExchangeName,
+        this.novelRoutingKey,
+        Buffer.from(JSON.stringify(novelJob)),
+        {
+          persistent: true,
+          messageId: jobId,
+          timestamp: Date.now(),
+        }
+      );
+
+      if (!published) {
+        throw new Error('Failed to publish novel message to queue');
+      }
+
+      let queuePosition: number | undefined = undefined;
+      try {
+        const q = await this.channel.checkQueue(this.novelQueueName);
+        queuePosition = q.messageCount;
+      } catch (e) {
+        console.warn('⚠️ Could not retrieve novel queue size:', e);
+      }
+
+      console.log(`📤 Published novel job: ${jobId} (Title: ${job.title || 'untitled'})`);
+      return { jobId, queuePosition };
+    } catch (error) {
+      console.error('❌ Failed to publish novel job:', error);
       throw error;
     }
   }
@@ -211,6 +294,74 @@ export class QueueService {
       },
       {
         noAck: false, // Manual acknowledgment
+      }
+    );
+  }
+
+  /**
+   * Consume novel generation jobs
+   */
+  async consumeNovelJobs(
+    handler: (job: NovelJob) => Promise<void>,
+    options: { prefetch?: number } = {}
+  ): Promise<void> {
+    if (!this.channel) {
+      await this.connect();
+    }
+
+    const prefetch = options.prefetch || 1;
+
+    if (!this.channel) {
+      throw new Error('Channel is null');
+    }
+
+    await this.channel.prefetch(prefetch);
+
+    console.log(`👂 Listening for novel generation jobs (prefetch: ${prefetch})...`);
+
+    await this.channel.consume(
+      this.novelQueueName,
+      async (msg: amqp.ConsumeMessage | null) => {
+        if (!msg) {
+          return;
+        }
+
+        const job: NovelJob = JSON.parse(msg.content.toString());
+        console.log(`\n📥 Received novel job: ${job.id} (Title: ${job.title || 'untitled'})`);
+
+        if (!this.channel) {
+          return;
+        }
+
+        try {
+          await handler(job);
+          this.channel.ack(msg);
+          console.log(`✅ Novel job ${job.id} completed and acknowledged`);
+        } catch (error) {
+          console.error(`❌ Error processing novel job ${job.id}:`, error);
+
+          if (!this.channel) {
+            return;
+          }
+
+          const retryCount = (msg.properties.headers?.['x-retry-count'] || 0) as number;
+
+          if (retryCount < 3) {
+            const retryDelay = Math.pow(2, retryCount) * 1000;
+            console.log(`🔄 Retrying novel job ${job.id} (attempt ${retryCount + 1}/3) after ${retryDelay}ms`);
+            setTimeout(() => {
+              if (this.channel) {
+                this.channel.nack(msg, false, true);
+              }
+            }, retryDelay);
+          } else {
+            console.error(`❌ Max retries reached for novel job ${job.id}, rejecting message`);
+            this.channel.nack(msg, false, false);
+          }
+        }
+      },
+      {
+        noAck: false,
       }
     );
   }

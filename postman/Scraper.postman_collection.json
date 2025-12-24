@@ -123,6 +123,68 @@
       ]
     },
     {
+      "name": "Generate Novel",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"The Lost Island\",\n  \"language\": \"Indonesian\",\n  \"genre\": \"Adventure\",\n  \"approxWords\": 3000,\n  \"prompt\": \"Focus on atmosphere and character development.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/novels/generate",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "novels",
+            "generate"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Note: Novel generation can take a long time. Ensure your Postman timeout is increased if needed.",
+              "// Endpoint is rate-limited (default: 2 req/60s)."
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('response.success is true', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "});",
+              "",
+              "pm.test('response has content and wordCount', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.data).to.have.property('content');",
+              "  pm.expect(json.data.wordCount).to.be.a('number');",
+              "  pm.expect(json.data.content.length).to.be.above(100);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
       "name": "Request IP Whitelist",
       "request": {
         "method": "POST",
@@ -202,6 +264,68 @@
           ]
         }
       }
+    },
+    {
+      "name": "Generate Novel (long-running)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"The Lost Island\",\n  \"language\": \"English\",\n  \"genre\": \"Adventure\",\n  \"approxWords\": 2000,\n  \"prompt\": \"Focus on atmosphere and character development.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/novels/generate",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "novels",
+            "generate"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Note: Novel generation can take a long time. Increase Postman request timeout if needed.",
+              "// This request is rate-limited to 2 req / 60s by default."
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('response.success is true', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "});",
+              "",
+              "pm.test('response has content and wordCount', function () {",
+              "  var json = pm.response.json();",
+              "  pm.expect(json.data).to.have.property('content');",
+              "  pm.expect(json.data.wordCount).to.be.a('number');",
+              "  pm.expect(json.data.content.length).to.be.above(100);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
     }
   ],
   "event": [
