@@ -64,33 +64,6 @@ sig=$(echo -n '{"jobId":"..."}' | openssl dgst -sha256 -hmac "s3cr3t" | sed 's/^
 # set header: X-Webhook-Signature: $sig
 </code></pre>
       <p><strong>Acknowledgement:</strong> Return any 2xx HTTP status to acknowledge the webhook; non-2xx responses are logged and do not cause the generation job to be retried automatically.</p>
-      <h3>POST /api/webhook/test</h3>
-      <p><strong>Development-only:</strong> This test endpoint is provided only for local development and testing and is <strong>not exposed in production</strong>. It accepts webhook POSTs and stores them to <code>/logs/webhooks/*.json</code>. If you provide a secret (either as query <code>?secret=...</code> or header <code>X-Webhook-Secret</code>), the endpoint will verify the <code>X-Webhook-Signature</code> header (HMAC-SHA256 hex of the JSON body) and return whether the signature matched.</p>
-      <pre><code>curl -X POST http://localhost:3000/api/webhook/test \
-  -H "Content-Type: application/json" \
-  -H "X-Webhook-Secret: s3cr3t" \
-  -H "X-Webhook-Signature: $(echo -n '{"jobId":"1"}' | openssl dgst -sha256 -hmac "s3cr3t" | sed 's/^.*= //')" \
-  -d '{"jobId":"1","result":"ok"}'</code></pre>
-
-      <h3>Webhook requirements for clients</h3>
-      <p>If you are receiving webhooks from this service, implement the following simple rules to ensure compatibility and security:</p>
-      <ul>
-        <li>Accept <code>POST</code> with <code>Content-Type: application/json</code>.</li>
-        <li>Return any <code>2xx</code> HTTP status to acknowledge receipt (the service logs non-2xx responses).</li>
-        <li>If you supplied <code>webhookSecret</code> when queuing the job, verify the header <code>X-Webhook-Signature</code> (hex HMAC-SHA256 of the exact request body using that secret).</li>
-        <li>Optionally inspect <code>X-Webhook-Type</code> to know whether the payload is an <code>article</code> or <code>novel</code>.</li>
-        <li>Payload examples:
-          <pre><code>// Article success
-{ "success": true, "jobId": "article-...", "data": { /* article */ } }
-
-// Novel success
-{ "success": true, "jobId": "novel-...", "data": { "title": "...", "language":"...","wordCount": 1234, "content": "..." } }
-
-// Failure
-{ "success": false, "jobId": "...", "error": "..." }
-</code></pre>
-        </li>
-      </ul>
 
       <h3>POST /api/novels/generate</h3>
       <p>Public endpoint that queues novel generation jobs and optionally notifies your webhook when done. Example body fields: <code>{ "title", "language", "genre", "approxWords", "prompt", "sessionName", "webhookUrl", "webhookSecret" }</code>. Rate-limited to ~2 requests / 60s.</p>
